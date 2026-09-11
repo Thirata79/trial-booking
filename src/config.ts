@@ -16,6 +16,11 @@ export type Config = {
   supabase: { url: string; serviceRoleKey: string } | null;
   lineChannelSecret: string;
   lineChannelAccessToken: string;
+  /**
+   * 管理画面のトークン。**未設定なら管理画面は生やさない。**
+   * 公開URLに出るため、認証なしで予約者の氏名を晒さないようにする。
+   */
+  adminToken: string | null;
   timezone: string;
   port: number;
 };
@@ -51,6 +56,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
         : null,
     lineChannelSecret: env.LINE_CHANNEL_SECRET!,
     lineChannelAccessToken: env.LINE_CHANNEL_ACCESS_TOKEN!,
+    adminToken: env.ADMIN_TOKEN?.trim() || null,
     timezone: env.TIMEZONE?.trim() || 'Asia/Tokyo',
     port,
   };

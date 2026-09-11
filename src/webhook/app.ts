@@ -18,6 +18,8 @@ export type WebhookDeps = {
   /** 実処理。T5 で状態機械に繋ぐ。ここでは注入されたものを呼ぶだけ。 */
   handleEvent: (event: LineEvent) => Promise<void>;
   onError?: (error: unknown, context: string) => void;
+  /** 管理画面。トークン未設定なら渡さない＝ルートが生えない（spec §10）。 */
+  admin?: Hono;
 };
 
 export function createWebhookApp(deps: WebhookDeps) {
@@ -34,6 +36,8 @@ export function createWebhookApp(deps: WebhookDeps) {
   });
 
   app.get('/health', (c) => c.json({ ok: true }));
+
+  if (deps.admin) app.route('/admin', deps.admin);
 
   app.notFound((c) => {
     const path = new URL(c.req.url).pathname;
