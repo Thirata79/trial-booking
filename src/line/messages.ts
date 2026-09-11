@@ -165,7 +165,14 @@ export function slotTaken(): LineMessage {
 }
 
 export function toHuman(): LineMessage {
-  return { type: 'text', text: '担当者よりご連絡します。少々お待ちください。' };
+  return {
+    type: 'text',
+    text: [
+      '担当者よりご連絡します。少々お待ちください。',
+      '',
+      'お急ぎの場合、ご予約の取り消しは「キャンセル」、日時の変更は「変更」と送っていただけます。',
+    ].join('\n'),
+  };
 }
 
 export function noBooking(): LineMessage {

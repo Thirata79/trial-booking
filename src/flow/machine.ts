@@ -135,21 +135,15 @@ export function createFlow(deps: FlowDeps) {
 
     const current = await currentState(lineUserId);
 
-    // HUMAN の間は応答しない（spec §6）。解除は管理画面から。
-    if (current.state === 'HUMAN') return;
-
     const postback = event.type === 'postback' ? new URLSearchParams(event.postback?.data ?? '') : null;
     const action = postback?.get('action') ?? null;
     const text = event.type === 'message' && event.message?.type === 'text'
       ? (event.message.text ?? '').trim()
       : null;
 
-    // どの状態からでも受ける操作（spec §6）
-    if (action === 'consult') {
-      await deps.line.reply(replyToken, [M.toHuman()]);
-      await moveTo(lineUserId, current.state, 'HUMAN', 'consult');
-      return;
-    }
+    // どの状態からでも受ける操作（spec §6 の「any」の行）。
+    // HUMAN 中も受ける——予約を持ったまま連絡待ちになった人が、自分で
+    // 取り消せなくなるため。他の入力は HUMAN では無視する（この直後）。
     if (action === 'cancel' || text === 'キャンセル') {
       await cancelBooking(replyToken, lineUserId, current.state);
       return;
@@ -158,6 +152,15 @@ export function createFlow(deps: FlowDeps) {
       const booking = await deps.bookings.findConfirmed(lineUserId);
       if (booking) await deps.bookings.cancel(booking.id);
       await showTimebands(replyToken, lineUserId, current.state, 'change');
+      return;
+    }
+
+    // ここから先は HUMAN では応答しない（spec §6）。解除は管理画面から。
+    if (current.state === 'HUMAN') return;
+
+    if (action === 'consult') {
+      await deps.line.reply(replyToken, [M.toHuman()]);
+      await moveTo(lineUserId, current.state, 'HUMAN', 'consult');
       return;
     }
 

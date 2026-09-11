@@ -162,14 +162,39 @@ describe('会話フロー', () => {
     expect(sent).toHaveLength(before);
   });
 
-  it('相談を選ぶと HUMAN になり、以後応答しない', async () => {
+  it('相談を選ぶと HUMAN になり、通常の入力には応答しない', async () => {
     await text('予約');
     await postback('action=consult');
     expect(textOf(sent.at(-1)!)).toContain('担当者よりご連絡します');
 
     const before = sent.length;
     await text('すみません');
+    await postback('action=band&v=weekday_pm');
     expect(sent).toHaveLength(before);
+  });
+
+  it('HUMAN 中でも「キャンセル」は受ける（予約を持ったまま詰まないため）', async () => {
+    await bookThrough();
+    await text('相談したい');
+    await postback('action=consult');
+    expect(stores.snapshot().bookings).toHaveLength(1);
+
+    await text('キャンセル');
+    expect(textOf(sent.at(-1)!)).toContain('キャンセルしました');
+    expect(stores.snapshot().bookings).toHaveLength(0);
+  });
+
+  it('HUMAN 中でも「変更」は受け、時間帯から再開する', async () => {
+    await bookThrough();
+    await postback('action=consult');
+
+    await text('変更');
+    expect(stores.snapshot().bookings).toHaveLength(0);
+    expect(buttonData(sent.at(-1)!)).toContain('action=band&v=weekday_pm');
+
+    // HUMAN から抜けているので、通常の入力にも応答が戻る
+    await postback('action=band&v=weekday_pm');
+    expect(quickReplyData(sent.at(-1)!).length).toBeGreaterThan(0);
   });
 
   it('キャンセルすると枠が解放され、同じ枠が再び出る', async () => {
