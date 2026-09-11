@@ -75,6 +75,19 @@ describe('会話フロー', () => {
     return slot;
   }
 
+  it.each(['体験', '無料体験', '予約', 'よやく'])(
+    'リッチメニューが送るテキスト「%s」で起動する',
+    async (trigger) => {
+      await text(trigger);
+      expect(quickReplyData(sent.at(-1)!)).toContain('action=more');
+    },
+  );
+
+  it('リッチメニューの postback（action=start）でも起動する', async () => {
+    await postback('action=start');
+    expect(quickReplyData(sent.at(-1)!)).toContain('action=more');
+  });
+
   it('入口でいきなり最短5件＋他の日時＋相談が出る', async () => {
     await text('無料体験');
     const items = quickReplyData(sent[0]!);
