@@ -35,6 +35,10 @@
 - 複数施設対応
 - 多言語
 - 管理画面のデザイン（機能すれば可）
+- FAQ 応答。LINE公式の「AIチャットボット(β)」も使わない。会話がボタン主導で
+  自由入力が少なく、拾えない入力は有人に渡る設計のため、意図判定の必要が薄い。
+  併用すると二重返信の検証が増え、チャットProの課金も要る。必要になったら
+  こちらの Webhook 側に実装する
 
 ---
 
@@ -202,11 +206,14 @@ create table reminder_logs (
 | AWAIT_SLOT | postback `action=slot&id=<uuid>&d=<date>` | payload に保持し氏名を尋ねる | AWAIT_NAME |
 | AWAIT_NAME | text | 予約を作成し確定文面を返す | IDLE |
 | AWAIT_* | postback `action=consult` | 有人案内 | HUMAN |
-| any | `キャンセル` / `action=cancel` | 確認 → 取消 | IDLE |
-| any | `変更` / `action=change` | 取消 → 時間帯から再開 | AWAIT_TIMEBAND |
-| HUMAN | — | 応答しない | 管理画面の操作で IDLE |
+| any（HUMAN 含む） | `キャンセル` / `action=cancel` | 確認 → 取消 | IDLE |
+| any（HUMAN 含む） | `変更` / `action=change` | 取消 → 時間帯から再開 | AWAIT_TIMEBAND |
+| HUMAN | 上記2つ以外 | 応答しない | 管理画面の操作で IDLE |
 
 - 選択は **postback** で受ける。テキスト一致に依存しない
+- HUMAN でも「キャンセル」「変更」だけは受ける。予約を持ったまま連絡待ちに
+  なった人が、自分で取り消せなくなるため（当初の表は「any」と「HUMAN は
+  応答しない」が矛盾していた）
 - AWAIT_* で想定外の text が来たら選択肢を1回だけ再提示。2回連続で外れたら HUMAN
 - `expires_at` 超過の state は破棄し、IDLE として扱う
 - 状態が変わるたびに `flow_events` に追記する
@@ -318,7 +325,7 @@ commit;
 - [ ] 締切を過ぎた枠が選択肢に出ない
 - [ ] slot_exceptions で閉じた日が選択肢に出ない
 - [ ] 会話の途中で無関係なテキストを送っても、1回は選択肢が再提示される
-- [ ] 2回連続で外すと HUMAN になり、以後Botが応答しない
+- [ ] 2回連続で外すと HUMAN になり、以後Botが応答しない（「キャンセル」「変更」を除く）
 - [ ] 24時間放置した会話が IDLE に戻る
 - [ ] 前日リマインドが1予約につき1回だけ送られる
 - [ ] キャンセルすると枠が解放され、同じ枠が再び選択肢に出る
