@@ -37,7 +37,9 @@ LINE_TOKEN=""
 while [ -z "$LINE_TOKEN" ]; do
   if [ "$how" = "2" ]; then
     read -rp  'チャネルID（数字）        : ' CHANNEL_ID
+    echo "  ※ 次の入力は画面に表示されません。貼り付けて Enter を押してください。"
     read -rsp 'チャネルシークレット      : ' CHANNEL_SECRET; echo
+    echo "  → ${#CHANNEL_SECRET} 文字を受け取りました"
     echo -n "  発行中... "
     code=$(curl -s -o "$TMP" -w '%{http_code}' -X POST https://api.line.me/v2/oauth/accessToken \
       -H 'Content-Type: application/x-www-form-urlencoded' \
@@ -56,7 +58,9 @@ while [ -z "$LINE_TOKEN" ]; do
     # 発行に使ったシークレットは、そのまま署名検証にも使う
     LINE_SECRET="$CHANNEL_SECRET"
   else
+    echo "  ※ 次の入力は画面に表示されません。貼り付けて Enter を押してください。"
     read -rsp 'チャネルアクセストークン  : ' candidate; echo
+    echo "  → ${#candidate} 文字を受け取りました"
     [ -n "$candidate" ] || { echo "  ⚠ 空です"; continue; }
     LINE_SECRET=""
   fi
@@ -73,7 +77,9 @@ done
 
 # 1) を選んだ場合はシークレットを別途もらう。Webhook の署名検証に要る。
 while [ -z "${LINE_SECRET:-}" ]; do
+  echo "  ※ 次の入力は画面に表示されません。貼り付けて Enter を押してください。"
   read -rsp 'チャネルシークレット      : ' LINE_SECRET; echo
+  echo "  → ${#LINE_SECRET} 文字を受け取りました"
   [ -n "$LINE_SECRET" ] || echo "  ⚠ 空です"
 done
 
