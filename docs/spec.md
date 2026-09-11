@@ -43,9 +43,9 @@
 | # | 項目 | 値 | 状態 |
 |---|---|---|---|
 | 1 | 体験枠（曜日×時刻×定員） | 月〜日 × 12:00 / 14:00 / 16:00、各60分・定員2名 | 確定 |
-| 2 | 予約締切 | 前日の20:00まで | 確定 |
+| 2 | 予約締切 | 前日の18:00まで | 確定 |
 | 3 | 提示する期間 | 直近14日 | 仮 |
-| 4 | リマインド送信時刻 | 前日 18:00 JST | 仮 |
+| 4 | リマインド送信時刻 | 前日 19:00 JST（締切の1時間後） | 確定 |
 | 5 | 会話状態のタイムアウト | 24時間 | 仮 |
 | 6 | 選択肢を外した時の再提示 | 1回、2回目で有人へ | 仮 |
 | 7 | 営業時間外のBot稼働 | 常時稼働 | 仮 |
@@ -112,8 +112,8 @@ create table settings (
   venue_name text not null,
   venue jsonb not null default '{}'::jsonb,   -- 住所・アクセス・持ち物
   timezone text not null default 'Asia/Tokyo',
-  remind_hour int not null default 18,
-  booking_cutoff_hour int not null default 20,   -- 前日のこの時刻で締切
+  remind_hour int not null default 19,
+  booking_cutoff_hour int not null default 18,   -- 前日のこの時刻で締切
   slot_horizon_days int not null default 14,
   bot_enabled boolean not null default true
 );
