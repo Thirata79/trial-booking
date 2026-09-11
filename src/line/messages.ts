@@ -84,6 +84,66 @@ export function askTimeband(): LineMessage {
   };
 }
 
+/**
+ * 最短の候補を直に見せる（CV優先の導線）。
+ * 時間帯の選択を挟まず、ここが会話の入口になる。
+ */
+export function askSoonestSlots(occurrences: Occurrence[], timezone: string): LineMessage {
+  const items: QuickReplyItem[] = occurrences.map((o) => ({
+    type: 'action',
+    action: {
+      type: 'postback',
+      label: shortSlotLabel(o.startAt, timezone),
+      data: postbackData('slot', { id: o.slotId, d: o.date }),
+      displayText: formatSlotLabel(o.startAt, timezone),
+    },
+  }));
+
+  items.push(
+    {
+      type: 'action',
+      action: {
+        type: 'postback',
+        label: '他の日時を見る',
+        data: postbackData('more'),
+        displayText: '他の日時を見たいです',
+      },
+    },
+    {
+      type: 'action',
+      action: {
+        type: 'postback',
+        label: '担当者に相談',
+        data: postbackData('consult'),
+        displayText: '担当者に相談したいです',
+      },
+    },
+  );
+
+  return {
+    type: 'text',
+    text: '無料体験のご予約ですね。ご希望の日時を選んでください。',
+    quickReply: { items },
+  };
+}
+
+/** 人数。枠に2名分の空きがあるときだけ聞く（1名分しか無ければ聞く意味がない）。 */
+export function askPartySize(slotLabel: string): LineMessage {
+  const text = `${slotLabel} ですね。何名でお越しになりますか。`;
+  return {
+    type: 'template',
+    altText: text,
+    template: {
+      type: 'buttons',
+      text,
+      actions: [
+        { type: 'postback', label: '1名', data: postbackData('party', { n: '1' }), displayText: '1名' },
+        { type: 'postback', label: '2名', data: postbackData('party', { n: '2' }), displayText: '2名' },
+      ],
+    },
+  };
+}
+
 /** 枠の選択。件数が動くのでクイックリプライ（最大13個、spec §7）。 */
 export function askSlot(occurrences: Occurrence[], timezone: string): LineMessage {
   const items: QuickReplyItem[] = occurrences.map((o) => ({
@@ -121,17 +181,24 @@ export function noSlots(): LineMessage {
   };
 }
 
-export function askName(slotLabel: string): LineMessage {
+export function askName(slotLabel: string, partySize: number): LineMessage {
+  const who = partySize > 1 ? `${slotLabel} に${partySize}名` : slotLabel;
   return {
     type: 'text',
-    text: `${slotLabel} でお取りします。最後に、お名前だけ教えてください。`,
+    text: `${who} でお取りします。最後に、お名前だけ教えてください。`,
   };
 }
 
-export function confirmed(name: string, slotLabel: string, venue: Venue): LineMessage {
+export function confirmed(
+  name: string,
+  slotLabel: string,
+  partySize: number,
+  venue: Venue,
+): LineMessage {
+  const who = partySize > 1 ? `${name}さま（${partySize}名）` : `${name}さま`;
   return {
     type: 'text',
-    text: [`${name}さま、${slotLabel} にお待ちしています。`, '', venueFooter(venue)].join('\n'),
+    text: [`${who}、${slotLabel} にお待ちしています。`, '', venueFooter(venue)].join('\n'),
   };
 }
 

@@ -46,7 +46,7 @@
 
 | # | 項目 | 値 | 状態 |
 |---|---|---|---|
-| 1 | 体験枠（曜日×時刻×定員） | 月〜日 × 12:00 / 14:00 / 16:00、各60分・定員2名 | 確定 |
+| 1 | 体験枠（曜日×時刻×定員） | 月〜日 × 12:00 / 14:00 / 16:00、各60分・**1枠2名まで**（予約件数ではなく人数） | 確定 |
 | 2 | 予約締切 | 前日の18:00まで | 確定 |
 | 3 | 提示する期間 | 直近14日 | 仮 |
 | 4 | リマインド送信時刻 | 前日 19:00 JST（締切の1時間後） | 確定 |
@@ -153,6 +153,7 @@ create table bookings (
   booked_date date not null,
   start_at timestamptz not null,
   name text not null,
+  party_size int not null default 1 check (party_size between 1 and 2),
   status text not null default 'confirmed'
     check (status in ('confirmed','cancelled','attended','no_show')),
   created_at timestamptz not null default now(),
@@ -199,18 +200,25 @@ create table reminder_logs (
 
 ## 6. 状態機械
 
+**CV を優先し、時間帯の選択を既定の経路から外した。** 最短の候補を直に見せ、
+都合が合わない人だけ「他の日時を見る」で絞り込みに回す。
+
 | 現状態 | 入力 | 処理 | 次状態 |
 |---|---|---|---|
-| IDLE | postback `action=start` | 時間帯の選択肢を返す | AWAIT_TIMEBAND |
+| IDLE | postback `action=start`（リッチメニュー）／ text ／ follow | **最短5件**を提示 | AWAIT_SLOT |
+| AWAIT_SLOT | postback `action=slot&id=<uuid>&d=<date>` | 残2名なら人数を、残1名なら氏名を尋ねる | AWAIT_PARTY_SIZE ／ AWAIT_NAME |
+| AWAIT_SLOT | postback `action=more` | 時間帯の選択肢を返す | AWAIT_TIMEBAND |
 | AWAIT_TIMEBAND | postback `action=band&v=<id>` | 空き枠を算出し選択肢を返す | AWAIT_SLOT |
-| AWAIT_SLOT | postback `action=slot&id=<uuid>&d=<date>` | payload に保持し氏名を尋ねる | AWAIT_NAME |
+| AWAIT_PARTY_SIZE | postback `action=party&n=1\|2` | 氏名を尋ねる | AWAIT_NAME |
 | AWAIT_NAME | text | 予約を作成し確定文面を返す | IDLE |
 | AWAIT_* | postback `action=consult` | 有人案内 | HUMAN |
 | any（HUMAN 含む） | `キャンセル` / `action=cancel` | 確認 → 取消 | IDLE |
-| any（HUMAN 含む） | `変更` / `action=change` | 取消 → 時間帯から再開 | AWAIT_TIMEBAND |
+| any（HUMAN 含む） | `変更` / `action=change` | 取消 → 最短候補から再開 | AWAIT_SLOT |
 | HUMAN | 上記2つ以外 | 応答しない | 管理画面の操作で IDLE |
 
 - 選択は **postback** で受ける。テキスト一致に依存しない
+- **人数は枠を選んだ後に聞く。ただし残り2名分の空きがあるときだけ。**
+  残り1名分の枠で「2名」を選ばせると、その場で破綻するため
 - HUMAN でも「キャンセル」「変更」だけは受ける。予約を持ったまま連絡待ちに
   なった人が、自分で取り消せなくなるため（当初の表は「any」と「HUMAN は
   応答しない」が矛盾していた）
@@ -253,12 +261,17 @@ commit;
 
 ## 7. UIの表現
 
-**画像は使わない。** 生成と差し替えの運用を発生させないため。
+**画像はリッチメニューにだけ使う。** 当初は「画像を使わない」方針だったが、
+リッチメニューには背景画像が必須で、常時表示される起動導線は CV への寄与が
+大きいため例外とする。メッセージ内では引き続き画像を使わない。
 
 | 場面 | 使うもの |
 |---|---|
-| 時間帯の選択（平日午後／週末午後の2件） | ボタンテンプレート（最大4アクション） |
-| 枠の選択（可変・最大12件） | クイックリプライ（最大13個） |
+| 起動導線（無料体験） | リッチメニュー。postback `action=start` |
+| 日時の選択（最短5件＋他の日時＋相談） | クイックリプライ |
+| 人数の選択（1名／2名） | ボタンテンプレート |
+| 時間帯の選択（他の日時を選んだ場合のみ） | ボタンテンプレート |
+| 枠の選択（絞り込み後・最大12件） | クイックリプライ（最大13個） |
 | 確定・リマインド | テキスト |
 | Flexメッセージ | 必要になるまで使わない |
 

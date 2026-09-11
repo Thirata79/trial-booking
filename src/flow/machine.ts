@@ -8,10 +8,18 @@
 
 import { createLineClient } from '../line/client.js';
 import * as M from '../line/messages.js';
-import { availableOccurrences, type Occurrence, type Timeband } from '../slots/availability.js';
+import {
+  availableOccurrences,
+  soonestOccurrences,
+  type Occurrence,
+  type Timeband,
+} from '../slots/availability.js';
 import type { ConvState, FlowDeps, IncomingEvent, State } from './types.js';
 
 const TIMEBANDS: Timeband[] = ['weekday_pm', 'weekend_pm'];
+
+/** 入口で見せる候補の数（spec §7）。 */
+const SOONEST_LIMIT = 5;
 
 function isTimeband(value: string): value is Timeband {
   return (TIMEBANDS as string[]).includes(value);
@@ -70,6 +78,39 @@ export function createFlow(deps: FlowDeps) {
     await moveTo(lineUserId, from, 'AWAIT_TIMEBAND', trigger);
   }
 
+  /** 会話の入口。時間帯を挟まず、最短の候補を直に見せる。 */
+  async function showSoonest(
+    replyToken: string,
+    lineUserId: string,
+    from: State | null,
+    trigger: string,
+  ): Promise<void> {
+    const { timezone } = await deps.settings();
+    const occurrences = await soonestOccurrences(deps.availability, deps.now(), SOONEST_LIMIT);
+
+    if (occurrences.length === 0) {
+      await deps.line.reply(replyToken, [M.noSlots(), M.toHuman()]);
+      await moveTo(lineUserId, from, 'HUMAN', 'no_slots');
+      return;
+    }
+
+    await deps.line.reply(replyToken, [M.askSoonestSlots(occurrences, timezone)]);
+    await moveTo(lineUserId, from, 'AWAIT_SLOT', trigger, { mode: 'soonest' });
+  }
+
+  /** AWAIT_SLOT で選ばれた枠を、いまの提示元から引き直す。 */
+  async function lookupOccurrence(
+    payload: Record<string, string>,
+    slotId: string,
+    date: string,
+  ): Promise<Occurrence | undefined> {
+    const band = payload.band ?? '';
+    const list = isTimeband(band)
+      ? await availableOccurrences(deps.availability, band, deps.now())
+      : await soonestOccurrences(deps.availability, deps.now(), SOONEST_LIMIT);
+    return list.find((o) => o.slotId === slotId && o.date === date);
+  }
+
   async function showSlots(
     replyToken: string,
     lineUserId: string,
@@ -89,6 +130,20 @@ export function createFlow(deps: FlowDeps) {
     await moveTo(lineUserId, from, 'AWAIT_SLOT', `band:${band}`, { band });
   }
 
+  /** いまの提示元（最短候補か時間帯絞り込みか）に応じて枠を出し直す。 */
+  async function reshowSlots(
+    replyToken: string,
+    lineUserId: string,
+    current: ConvState,
+  ): Promise<void> {
+    const band = current.payload.band ?? '';
+    if (isTimeband(band)) {
+      await showSlots(replyToken, lineUserId, current.state, band);
+    } else {
+      await showSoonest(replyToken, lineUserId, current.state, 'reshow');
+    }
+  }
+
   /** 選択肢を外したとき。1回目は再提示、2回目で HUMAN（spec §6）。 */
   async function handleMiss(
     replyToken: string,
@@ -106,6 +161,11 @@ export function createFlow(deps: FlowDeps) {
       const band = current.payload.band as Timeband;
       const occurrences = await availableOccurrences(deps.availability, band, deps.now());
       await deps.line.reply(replyToken, [M.askSlot(occurrences, timezone)]);
+    } else if (current.state === 'AWAIT_SLOT') {
+      const occurrences = await soonestOccurrences(deps.availability, deps.now(), SOONEST_LIMIT);
+      await deps.line.reply(replyToken, [M.askSoonestSlots(occurrences, timezone)]);
+    } else if (current.state === 'AWAIT_PARTY_SIZE') {
+      await deps.line.reply(replyToken, [M.askPartySize(current.payload.slotLabel ?? '')]);
     } else {
       await deps.line.reply(replyToken, [M.askTimeband()]);
     }
@@ -151,7 +211,7 @@ export function createFlow(deps: FlowDeps) {
     if (action === 'change' || text === '変更') {
       const booking = await deps.bookings.findConfirmed(lineUserId);
       if (booking) await deps.bookings.cancel(booking.id);
-      await showTimebands(replyToken, lineUserId, current.state, 'change');
+      await showSoonest(replyToken, lineUserId, current.state, 'change');
       return;
     }
 
@@ -176,7 +236,7 @@ export function createFlow(deps: FlowDeps) {
             ]);
             return;
           }
-          await showTimebands(replyToken, lineUserId, 'IDLE', action === 'start' ? 'start' : 'text_start');
+          await showSoonest(replyToken, lineUserId, 'IDLE', action === 'start' ? 'start' : 'text_start');
         }
         return;
       }
@@ -192,32 +252,61 @@ export function createFlow(deps: FlowDeps) {
       }
 
       case 'AWAIT_SLOT': {
+        // 最短候補で都合が合わない人は、時間帯から絞り直す
+        if (action === 'more') {
+          await showTimebands(replyToken, lineUserId, 'AWAIT_SLOT', 'more');
+          return;
+        }
+
         const slotId = postback?.get('id') ?? '';
         const date = postback?.get('d') ?? '';
         if (action === 'slot' && slotId && date) {
-          const band = current.payload.band ?? '';
-          const occurrence = isTimeband(band)
-            ? (await availableOccurrences(deps.availability, band, deps.now())).find(
-                (o) => o.slotId === slotId && o.date === date,
-              )
-            : undefined;
+          const occurrence = await lookupOccurrence(current.payload, slotId, date);
 
           if (!occurrence) {
             // 選んでいる間に埋まった、あるいは締切を過ぎた
             await deps.line.reply(replyToken, [M.slotTaken()]);
-            if (isTimeband(band)) await showSlots(replyToken, lineUserId, 'AWAIT_SLOT', band);
+            await reshowSlots(replyToken, lineUserId, current);
             return;
           }
 
           const { timezone } = await deps.settings();
-          await deps.line.reply(replyToken, [
-            M.askName(M.formatSlotLabel(occurrence.startAt, timezone)),
-          ]);
-          await moveTo(lineUserId, 'AWAIT_SLOT', 'AWAIT_NAME', 'slot_picked', {
-            band,
+          const slotLabel = M.formatSlotLabel(occurrence.startAt, timezone);
+          const payload = {
+            ...current.payload,
             slotId,
             date,
+            slotLabel,
             startAt: occurrence.startAt.toISOString(),
+          };
+
+          // 2名分の空きがあるときだけ人数を聞く。1名分しか無ければ聞く意味がない。
+          if (occurrence.remaining >= 2) {
+            await deps.line.reply(replyToken, [M.askPartySize(slotLabel)]);
+            await moveTo(lineUserId, 'AWAIT_SLOT', 'AWAIT_PARTY_SIZE', 'slot_picked', payload);
+            return;
+          }
+
+          await deps.line.reply(replyToken, [M.askName(slotLabel, 1)]);
+          await moveTo(lineUserId, 'AWAIT_SLOT', 'AWAIT_NAME', 'slot_picked', {
+            ...payload,
+            partySize: '1',
+          });
+          return;
+        }
+        await handleMiss(replyToken, lineUserId, current);
+        return;
+      }
+
+      case 'AWAIT_PARTY_SIZE': {
+        const n = Number(postback?.get('n') ?? '');
+        if (action === 'party' && (n === 1 || n === 2)) {
+          await deps.line.reply(replyToken, [
+            M.askName(current.payload.slotLabel ?? '', n),
+          ]);
+          await moveTo(lineUserId, 'AWAIT_PARTY_SIZE', 'AWAIT_NAME', `party:${n}`, {
+            ...current.payload,
+            partySize: String(n),
           });
           return;
         }
@@ -246,7 +335,8 @@ export function createFlow(deps: FlowDeps) {
     name: string,
   ): Promise<void> {
     const { timezone, venue } = await deps.settings();
-    const { slotId, date, startAt, band } = current.payload;
+    const { slotId, date, startAt } = current.payload;
+    const partySize = Number(current.payload.partySize ?? '1') || 1;
     if (!slotId || !date || !startAt) {
       await handleMiss(replyToken, lineUserId, current);
       return;
@@ -258,21 +348,18 @@ export function createFlow(deps: FlowDeps) {
       date,
       startAt: new Date(startAt),
       name,
+      partySize,
     });
 
     if (!booking) {
-      // 定員に達していた（spec §6「同時予約」）。AWAIT_SLOT から再提示する。
+      // 定員に達していた（spec §6「同時予約」）。再提示する。
       await deps.line.reply(replyToken, [M.slotTaken()]);
-      if (isTimeband(band ?? '')) {
-        await showSlots(replyToken, lineUserId, 'AWAIT_NAME', band as Timeband);
-      } else {
-        await showTimebands(replyToken, lineUserId, 'AWAIT_NAME', 'slot_taken');
-      }
+      await reshowSlots(replyToken, lineUserId, current);
       return;
     }
 
     const label = M.formatSlotLabel(booking.startAt, timezone);
-    await deps.line.reply(replyToken, [M.confirmed(name, label, venue)]);
+    await deps.line.reply(replyToken, [M.confirmed(name, label, booking.partySize, venue)]);
     await moveTo(lineUserId, 'AWAIT_NAME', 'IDLE', 'booked');
   }
 
