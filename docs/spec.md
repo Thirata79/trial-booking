@@ -43,7 +43,7 @@
 | # | 項目 | 値 | 状態 |
 |---|---|---|---|
 | 1 | 体験枠（曜日×時刻×定員） | 月〜日 × 12:00 / 14:00 / 16:00、各60分・定員2名 | 確定 |
-| 2 | 予約締切 | 開始の12時間前 | 仮 |
+| 2 | 予約締切 | 前日の20:00まで | 確定 |
 | 3 | 提示する期間 | 直近14日 | 仮 |
 | 4 | リマインド送信時刻 | 前日 18:00 JST | 仮 |
 | 5 | 会話状態のタイムアウト | 24時間 | 仮 |
@@ -113,7 +113,7 @@ create table settings (
   venue jsonb not null default '{}'::jsonb,   -- 住所・アクセス・持ち物
   timezone text not null default 'Asia/Tokyo',
   remind_hour int not null default 18,
-  booking_cutoff_hours int not null default 12,
+  booking_cutoff_hour int not null default 20,   -- 前日のこの時刻で締切
   slot_horizon_days int not null default 14,
   bot_enabled boolean not null default true
 );
@@ -220,7 +220,7 @@ availableOccurrences(timeband: Timeband, now: Date): Occurrence[]
 1. `slots` から active かつ timeband 一致を取得
 2. `now` から `slot_horizon_days` 先までの日付に展開
 3. `slot_exceptions` に該当するものを除外
-4. `start_at - booking_cutoff_hours <= now` を除外
+4. 前日の `booking_cutoff_hour` 時（施設TZ）を過ぎている日付を除外
 5. 各 occurrence の confirmed 件数が `capacity` 未満のもののみ残す
 6. 先頭最大12件を返す（13枠目は「別の日を相談」に充てる）
 
