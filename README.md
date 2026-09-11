@@ -57,6 +57,42 @@ jobs/          前日リマインド（毎時実行）
 supabase/migrations/
 ```
 
+## LINE と繋いで動かす
+
+Supabase を用意する前でも、`STORAGE=memory` にすれば LINE 上の動作を確認できる。
+**この状態では予約も重複判定もプロセス再起動で消える。** 本番前に `supabase` へ戻すこと。
+
+### 1. LINE の開発用チャネルを作る
+
+LINE Developers で Messaging API チャネルを作り、次の2つを控える。
+
+- チャネルシークレット（Basic settings）
+- チャネルアクセストークン（Messaging API settings。長期のものを発行）
+
+同じ画面で「応答メッセージ」を off、「Webhook」を on にする。
+**既存の本番チャネルは触らない。**
+
+### 2. ローカルで動かす
+
+```bash
+./scripts/setup-env.sh   # 鍵を対話的に入力して .env を作る（画面にも履歴にも残らない）
+npm run build
+node dist/src/webhook/index.js
+curl localhost:8080/health
+```
+
+### 3. Fly.io にデプロイ
+
+```bash
+fly auth login
+fly launch --no-deploy --copy-config --name trial-booking
+fly secrets set LINE_CHANNEL_SECRET=xxx LINE_CHANNEL_ACCESS_TOKEN=yyy
+fly deploy
+```
+
+デプロイ後、`https://<アプリ名>.fly.dev/webhook` を LINE の Webhook URL に設定し、
+「検証」を押す。200 が返れば繋がっている。
+
 ## タスクの進め方
 
 spec §13 の順に、1タスク1PR。まとめない。

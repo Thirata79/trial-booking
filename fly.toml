@@ -1,0 +1,27 @@
+# Fly.io のアプリ定義（spec §3）。
+# 秘密情報はここに書かず、fly secrets set で設定する。
+
+app = "trial-booking"
+primary_region = "nrt"
+
+[build]
+
+[env]
+  PORT = "8080"
+  TIMEZONE = "Asia/Tokyo"
+  # Supabase を用意するまではメモリ上で動かす。本番前に supabase へ戻すこと。
+  STORAGE = "memory"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    path = "/health"
+    timeout = "5s"

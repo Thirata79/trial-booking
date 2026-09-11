@@ -1,9 +1,9 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import type { Config } from './config.js';
+import type { MarkEventSeen } from './webhook/event-store.js';
 
 /** service_role キーで接続する。RLS はバイパスされる（migration の方針を参照）。 */
-export function createDbClient(config: Config): SupabaseClient {
-  return createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
+export function createDbClient(config: { url: string; serviceRoleKey: string }): SupabaseClient {
+  return createClient(config.url, config.serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }
@@ -15,7 +15,7 @@ const UNIQUE_VIOLATION = '23505';
  * 「先に SELECT してから INSERT」ではなく INSERT の一意制約違反で判定する
  * ——同一イベントが同時に2回届いても、通るのは片方だけになる。
  */
-export function makeMarkEventSeen(db: SupabaseClient) {
+export function makeMarkEventSeen(db: SupabaseClient): MarkEventSeen {
   return async (eventId: string): Promise<boolean> => {
     const { error } = await db.from('webhook_events').insert({ event_id: eventId });
     if (!error) return true;
