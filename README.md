@@ -75,7 +75,7 @@ LINE Developers で Messaging API チャネルを作り、次の2つを控える
 ### 2. ローカルで動かす
 
 ```bash
-cp .env.example .env   # LINE の2つと STORAGE=memory を入れる
+./scripts/setup-env.sh   # 鍵を対話的に入力して .env を作る（画面にも履歴にも残らない）
 npm run build
 node dist/src/webhook/index.js
 curl localhost:8080/health
