@@ -142,6 +142,21 @@ export function reminder(slotLabel: string, venue: Venue): LineMessage {
   };
 }
 
+/**
+ * spec §8 に無い追加。bookings の一意制約（確定予約はユーザーにつき1件、§5）に
+ * ぶつかる前に知らせる必要があるため。
+ */
+export function alreadyBooked(slotLabel: string): LineMessage {
+  return {
+    type: 'text',
+    text: [
+      `すでに ${slotLabel} でご予約をお取りしています。`,
+      '',
+      '日時を変えるときは「変更」、取り消すときは「キャンセル」と送ってください。',
+    ].join('\n'),
+  };
+}
+
 export function slotTaken(): LineMessage {
   return {
     type: 'text',

@@ -1,7 +1,11 @@
 import { serve } from '@hono/node-server';
 import { loadConfig } from '../config.js';
 import { createDbClient, makeMarkEventSeen } from '../db.js';
-import { createWebhookApp, type LineEvent } from './app.js';
+import { createFlow } from '../flow/machine.js';
+import { createMemoryStores } from '../flow/memory-store.js';
+import type { IncomingEvent } from '../flow/types.js';
+import { createLineClient } from '../line/client.js';
+import { createWebhookApp } from './app.js';
 import { createMemoryEventStore, type MarkEventSeen } from './event-store.js';
 
 const config = loadConfig();
@@ -12,16 +16,30 @@ if (config.supabase) {
 } else {
   markEventSeen = createMemoryEventStore();
   console.warn(
-    '[warn] STORAGE=memory で起動しています。再起動すると重複判定が消えます。デモ用です。',
+    '[warn] STORAGE=memory で起動しています。予約も会話状態も再起動で消えます。デモ用です。',
   );
 }
+
+// Supabase 実装ができたら、このブロックを差し替えるだけでよい。
+const stores = createMemoryStores();
+const line = createLineClient({ accessToken: config.lineChannelAccessToken });
+
+const flow = createFlow({
+  now: () => new Date(),
+  settings: stores.settings,
+  availability: stores.availability,
+  bookings: stores.bookings,
+  states: stores.states,
+  events: stores.events,
+  line,
+});
 
 const app = createWebhookApp({
   channelSecret: config.lineChannelSecret,
   markEventSeen,
-  // T5 で状態機械に繋ぐ。それまでは受信を確認できるだけにしておく。
-  handleEvent: async (event: LineEvent) => {
+  handleEvent: async (event) => {
     console.log('[event]', event.type, event.webhookEventId ?? '(id なし)');
+    await flow.handleEvent(event as unknown as IncomingEvent);
   },
 });
 
