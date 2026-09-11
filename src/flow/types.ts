@@ -24,6 +24,8 @@ export type ConvStateStore = {
   get(lineUserId: string): Promise<ConvState | null>;
   set(lineUserId: string, state: ConvState): Promise<void>;
   clear(lineUserId: string): Promise<void>;
+  /** 指定した状態のユーザーを挙げる。管理画面の有人解除に使う（spec §10）。 */
+  listByState(state: State): Promise<{ lineUserId: string; since: Date }[]>;
 };
 
 export type Booking = {
@@ -37,6 +39,8 @@ export type Booking = {
 
 export type BookingStore = {
   findConfirmed(lineUserId: string): Promise<Booking | null>;
+  /** 確定している予約を全部返す。管理画面の予約一覧に使う（spec §10）。 */
+  listConfirmed(): Promise<Booking[]>;
   /**
    * 定員を確認してから作る。埋まっていれば null（spec §6「同時予約」）。
    * 確認と作成は不可分でなければならない。

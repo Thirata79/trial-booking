@@ -45,12 +45,25 @@ export function createMemoryStores(options: { slots?: Slot[]; exceptions?: SlotE
       async clear(id) {
         states.delete(id);
       },
+      async listByState(state) {
+        const out: { lineUserId: string; since: Date }[] = [];
+        for (const [lineUserId, conv] of states) {
+          if (conv.state !== state) continue;
+          // 期限から逆算して、その状態になった時刻の目安を出す
+          const since = new Date(conv.expiresAt.getTime() - CONVERSATION_TTL_HOURS * 3600_000);
+          out.push({ lineUserId, since });
+        }
+        return out;
+      },
     },
 
     bookings: {
       async findConfirmed(lineUserId) {
         for (const b of confirmed.values()) if (b.lineUserId === lineUserId) return b;
         return null;
+      },
+      async listConfirmed() {
+        return [...confirmed.values()];
       },
       async createIfRoom(input) {
         const slot = byId.get(input.slotId);
