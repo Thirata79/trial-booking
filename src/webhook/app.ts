@@ -26,7 +26,20 @@ export function createWebhookApp(deps: WebhookDeps) {
     deps.onError ??
     ((error: unknown, context: string) => console.error(`[${context}]`, error));
 
+  // 届いたリクエストは全部記録する。設定ミスで別のパスに飛んでいる場合、
+  // ログに何も出ないと「届いていない」のか「弾いている」のか切り分けられない。
+  app.use('*', async (c, next) => {
+    console.log(`[req] ${c.req.method} ${new URL(c.req.url).pathname}`);
+    await next();
+  });
+
   app.get('/health', (c) => c.json({ ok: true }));
+
+  app.notFound((c) => {
+    const path = new URL(c.req.url).pathname;
+    console.warn(`[404] ${c.req.method} ${path} — Webhook URL は /webhook です`);
+    return c.text('not found', 404);
+  });
 
   app.post('/webhook', async (c) => {
     // 署名検証には生ボディが要る（verify.ts 参照）。
