@@ -10,10 +10,36 @@ if [ -f .env ]; then
   [ "$answer" = "y" ] || { echo "中止しました"; exit 1; }
 fi
 
-read -rsp 'LINE チャネルシークレット: ' LINE_SECRET; echo
-read -rsp 'LINE チャネルアクセストークン: ' LINE_TOKEN; echo
+# 値そのものは表示せず、長さだけで取り違えを検出する。
+# チャネルシークレットは32文字の16進、長期アクセストークンは150文字以上。
+check_length() {
+  local label="$1" value="$2" min="$3" max="$4"
+  local len=${#value}
+  if [ "$len" -lt "$min" ] || [ "$len" -gt "$max" ]; then
+    echo "  ⚠ ${label}が${len}文字です。通常は${min}〜${max}文字で、取り違えの可能性があります。"
+    return 1
+  fi
+  return 0
+}
 
-[ -n "$LINE_SECRET" ] && [ -n "$LINE_TOKEN" ] || { echo "空の値は設定できません"; exit 1; }
+while :; do
+  read -rsp 'LINE チャネルシークレット: ' LINE_SECRET; echo
+  read -rsp 'LINE チャネルアクセストークン: ' LINE_TOKEN; echo
+
+  if [ -z "$LINE_SECRET" ] || [ -z "$LINE_TOKEN" ]; then
+    echo "  ⚠ 空の値は設定できません。"
+    continue
+  fi
+
+  ok=0
+  check_length 'シークレット' "$LINE_SECRET" 32 32 || ok=1
+  check_length 'アクセストークン' "$LINE_TOKEN" 150 400 || ok=1
+  [ "$ok" -eq 0 ] && break
+
+  echo "  シークレットは「チャネル基本設定」、トークンは「Messaging API設定」の最下部です。"
+  read -rp "  入力し直しますか？ [Y/n] " retry
+  [ "$retry" = "n" ] && break
+done
 
 umask 077
 cat > .env <<ENVFILE
