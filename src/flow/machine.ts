@@ -6,7 +6,7 @@
  * 2回連続で外したら HUMAN に落とす。
  */
 
-import { createLineClient } from '../line/client.js';
+import { createLineClient, type LineMessage } from '../line/client.js';
 import * as M from '../line/messages.js';
 import {
   availableOccurrences,
@@ -78,23 +78,29 @@ export function createFlow(deps: FlowDeps) {
     await moveTo(lineUserId, from, 'AWAIT_TIMEBAND', trigger);
   }
 
-  /** 会話の入口。時間帯を挟まず、最短の候補を直に見せる。 */
+  /**
+   * 会話の入口。時間帯を挟まず、最短の候補を直に見せる。
+   *
+   * reply token は1回限りなので、先に伝えたいことがあれば prefix で渡す。
+   * 2回 reply を呼ぶと2回目が 400 で落ち、選択肢が届かない。
+   */
   async function showSoonest(
     replyToken: string,
     lineUserId: string,
     from: State | null,
     trigger: string,
+    prefix: LineMessage[] = [],
   ): Promise<void> {
     const { timezone } = await deps.settings();
     const occurrences = await soonestOccurrences(deps.availability, deps.now(), SOONEST_LIMIT);
 
     if (occurrences.length === 0) {
-      await deps.line.reply(replyToken, [M.noSlots(), M.toHuman()]);
+      await deps.line.reply(replyToken, [...prefix, M.noSlots(), M.toHuman()]);
       await moveTo(lineUserId, from, 'HUMAN', 'no_slots');
       return;
     }
 
-    await deps.line.reply(replyToken, [M.askSoonestSlots(occurrences, timezone)]);
+    await deps.line.reply(replyToken, [...prefix, M.askSoonestSlots(occurrences, timezone)]);
     await moveTo(lineUserId, from, 'AWAIT_SLOT', trigger, { mode: 'soonest' });
   }
 
@@ -116,17 +122,18 @@ export function createFlow(deps: FlowDeps) {
     lineUserId: string,
     from: State,
     band: Timeband,
+    prefix: LineMessage[] = [],
   ): Promise<void> {
     const { timezone } = await deps.settings();
     const occurrences = await availableOccurrences(deps.availability, band, deps.now());
 
     if (occurrences.length === 0) {
-      await deps.line.reply(replyToken, [M.noSlots(), M.toHuman()]);
+      await deps.line.reply(replyToken, [...prefix, M.noSlots(), M.toHuman()]);
       await moveTo(lineUserId, from, 'HUMAN', 'no_slots');
       return;
     }
 
-    await deps.line.reply(replyToken, [M.askSlot(occurrences, timezone)]);
+    await deps.line.reply(replyToken, [...prefix, M.askSlot(occurrences, timezone)]);
     await moveTo(lineUserId, from, 'AWAIT_SLOT', `band:${band}`, { band });
   }
 
@@ -135,12 +142,13 @@ export function createFlow(deps: FlowDeps) {
     replyToken: string,
     lineUserId: string,
     current: ConvState,
+    prefix: LineMessage[] = [],
   ): Promise<void> {
     const band = current.payload.band ?? '';
     if (isTimeband(band)) {
-      await showSlots(replyToken, lineUserId, current.state, band);
+      await showSlots(replyToken, lineUserId, current.state, band, prefix);
     } else {
-      await showSoonest(replyToken, lineUserId, current.state, 'reshow');
+      await showSoonest(replyToken, lineUserId, current.state, 'reshow', prefix);
     }
   }
 
@@ -265,8 +273,7 @@ export function createFlow(deps: FlowDeps) {
 
           if (!occurrence) {
             // 選んでいる間に埋まった、あるいは締切を過ぎた
-            await deps.line.reply(replyToken, [M.slotTaken()]);
-            await reshowSlots(replyToken, lineUserId, current);
+            await reshowSlots(replyToken, lineUserId, current, [M.slotTaken()]);
             return;
           }
 
@@ -353,8 +360,7 @@ export function createFlow(deps: FlowDeps) {
 
     if (!booking) {
       // 定員に達していた（spec §6「同時予約」）。再提示する。
-      await deps.line.reply(replyToken, [M.slotTaken()]);
-      await reshowSlots(replyToken, lineUserId, current);
+      await reshowSlots(replyToken, lineUserId, current, [M.slotTaken()]);
       return;
     }
 

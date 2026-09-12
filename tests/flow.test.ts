@@ -221,6 +221,34 @@ describe('会話フロー', () => {
     expect(stores.snapshot().bookings).toHaveLength(1);
   });
 
+  // reply token は1回限り。2回 reply すると2回目が 400 で落ち、
+  // 「埋まりました」だけ届いて選択肢が出ないまま止まる。
+  it('枠が埋まっていた場合、1回の reply で通知と再提示をまとめて返す', async () => {
+    await text('無料体験');
+    const target = quickReplyData(sent.at(-1)!)[0]!;
+    await postback(target);
+
+    // 人数を答える前に、別の人が同じ枠を2名で埋める
+    await text('無料体験', 'U-rival');
+    await postback(target, 'U-rival');
+    await postback('action=party&n=2', 'U-rival');
+    await text('先客', 'U-rival');
+
+    const replyCalls = (line.reply as ReturnType<typeof vi.fn>).mock.calls.length;
+    await postback('action=party&n=1');
+    await text('平田');
+
+    // この2イベントで reply は2回まで（1イベント1回）
+    const after = (line.reply as ReturnType<typeof vi.fn>).mock.calls.length;
+    expect(after - replyCalls).toBe(2);
+
+    // 最後の1回に「埋まりました」と新しい選択肢の両方が入っている
+    const last = sent.at(-1)!;
+    expect(textOf(last)).toContain('埋まりました');
+    expect(quickReplyData([last[1]!])).toContain('action=more');
+    expect(stores.snapshot().bookings).toHaveLength(1);
+  });
+
   it('確定後は再度送ると既存予約を知らせる', async () => {
     await bookThrough();
     await text('無料体験');
