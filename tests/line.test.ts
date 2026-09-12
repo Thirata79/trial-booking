@@ -27,6 +27,7 @@ function occurrence(date: string, hour: number, slotId = 's1'): Occurrence {
     durationMin: 60,
     capacity: 2,
     booked: 0,
+    remaining: 2,
   };
 }
 
@@ -142,8 +143,16 @@ describe('文面', () => {
     expect(items.at(-1)?.action.data).toBe('action=consult');
   });
 
+  it('2名のときは確定文面に人数が出る', () => {
+    const message = confirmed('平田', '9月14日(月) 12:00', 2, venue) as Extract<
+      LineMessage,
+      { type: 'text' }
+    >;
+    expect(message.text).toContain('平田さま（2名）');
+  });
+
   it('確定文面に施設情報が差し込まれる', () => {
-    const message = confirmed('平田', '9月14日(月) 12:00', venue) as Extract<
+    const message = confirmed('平田', '9月14日(月) 12:00', 1, venue) as Extract<
       LineMessage,
       { type: 'text' }
     >;

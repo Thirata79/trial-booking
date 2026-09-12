@@ -28,9 +28,12 @@ export function createMemoryStores(options: { slots?: Slot[]; exceptions?: SlotE
   const confirmed = new Map<string, Booking>();
   const log: { lineUserId: string; fromState: State | null; toState: State; trigger: string }[] = [];
 
+  /** 件数ではなく人数を数える。 */
   function countFor(slotId: string, date: string): number {
     let n = 0;
-    for (const b of confirmed.values()) if (b.slotId === slotId && b.date === date) n += 1;
+    for (const b of confirmed.values()) {
+      if (b.slotId === slotId && b.date === date) n += b.partySize;
+    }
     return n;
   }
 
@@ -70,7 +73,7 @@ export function createMemoryStores(options: { slots?: Slot[]; exceptions?: SlotE
         if (!slot) return null;
         // 単一プロセス・単一スレッドなので、この確認と作成の間に割り込みは入らない。
         // DB 実装ではトランザクションで同じことをする（spec §6「同時予約」）。
-        if (countFor(input.slotId, input.date) >= slot.capacity) return null;
+        if (countFor(input.slotId, input.date) + input.partySize > slot.capacity) return null;
         const booking: Booking = { id: randomUUID(), ...input };
         confirmed.set(booking.id, booking);
         return booking;
@@ -100,7 +103,7 @@ export function createMemoryStores(options: { slots?: Slot[]; exceptions?: SlotE
         const counts = new Map<string, number>();
         for (const b of confirmed.values()) {
           const key = occurrenceKey(b.slotId, b.date);
-          counts.set(key, (counts.get(key) ?? 0) + 1);
+          counts.set(key, (counts.get(key) ?? 0) + b.partySize);
         }
         return counts;
       },
