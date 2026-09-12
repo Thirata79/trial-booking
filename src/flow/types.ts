@@ -8,6 +8,7 @@ export type State =
   | 'IDLE'
   | 'AWAIT_TIMEBAND'
   | 'AWAIT_SLOT'
+  | 'AWAIT_PARTY_SIZE'
   | 'AWAIT_NAME'
   | 'AWAIT_CANCEL_CONFIRM'
   | 'HUMAN';
@@ -35,6 +36,8 @@ export type Booking = {
   date: string;
   startAt: Date;
   name: string;
+  /** 体験に来る人数。定員は件数ではなく人数で数える（spec §2-1）。 */
+  partySize: number;
 };
 
 export type BookingStore = {

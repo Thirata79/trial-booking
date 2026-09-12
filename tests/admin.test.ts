@@ -88,6 +88,7 @@ describe('管理画面', () => {
       date: '2026-09-14',
       startAt: new Date('2026-09-14T03:00:00Z'),
       name: '平田',
+      partySize: 1,
     });
 
     const body = (await (await get('/api/bookings')).json()) as {

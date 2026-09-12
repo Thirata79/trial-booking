@@ -44,15 +44,22 @@ export type Occurrence = {
   date: string;
   startAt: Date;
   durationMin: number;
+  /** 受け入れ人数の上限 */
   capacity: number;
+  /** すでに埋まっている人数（予約件数ではない） */
   booked: number;
+  /** あと何名入れるか */
+  remaining: number;
 };
 
 export type AvailabilityRepo = {
   getSettings(): Promise<AvailabilitySettings>;
   listActiveSlots(timeband: Timeband): Promise<Slot[]>;
   listExceptions(fromDate: string, toDate: string): Promise<SlotException[]>;
-  /** キーは occurrenceKey(slotId, date)。confirmed のみ数えたもの。 */
+  /**
+   * キーは occurrenceKey(slotId, date)。confirmed の **人数の合計**。
+   * 1予約が複数名を連れてくるため、件数ではなく party_size の和で数える。
+   */
   countConfirmed(fromDate: string, toDate: string): Promise<Map<string, number>>;
 };
 
@@ -124,10 +131,30 @@ export async function availableOccurrences(
         durationMin: slot.durationMin,
         capacity: slot.capacity,
         booked: taken,
+        remaining: slot.capacity - taken,
       });
     }
   }
 
   found.sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
   return found.slice(0, MAX_OCCURRENCES);
+}
+
+/**
+ * timeband を問わず、直近から順に候補を返す（CV優先の導線）。
+ *
+ * 時間帯の選択を1段挟むより、最短の候補を直に見せた方が離脱が少ない。
+ * 都合が合わない人向けの逃げ道は「他の日時を見る」で timeband 選択に回す。
+ */
+export async function soonestOccurrences(
+  repo: AvailabilityRepo,
+  now: Date,
+  limit: number,
+): Promise<Occurrence[]> {
+  const bands: Timeband[] = ['weekday_pm', 'weekend_pm'];
+  const lists = await Promise.all(bands.map((band) => availableOccurrences(repo, band, now)));
+  return lists
+    .flat()
+    .sort((a, b) => a.startAt.getTime() - b.startAt.getTime())
+    .slice(0, limit);
 }
