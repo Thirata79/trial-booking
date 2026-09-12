@@ -243,15 +243,36 @@ reply token の有効時間内に返せる軽さを保つこと。
 
 ### 同時予約
 
+当初こう書いていたが、**これでは防げない。**
+
 ```sql
-begin;
+-- 誤り
 select count(*) from bookings
   where slot_id=$1 and booked_date=$2 and status='confirmed' for update;
--- count < capacity なら insert、そうでなければ rollback
+```
+
+`for update` が施錠するのは「読めた行」だけで、**まだ存在しない行は施錠できない**。
+枠が空（該当行ゼロ）のとき、2つのトランザクションが同時に count=0 を読み、
+両方とも insert して定員を超える。既存の予約が1件でもあれば、その行の奪い合いで
+偶然直列化されるため、**空の枠でだけ壊れる**——テストでも見つけにくい。
+
+親である slots の行を施錠して直列化する。
+
+```sql
+begin;
+-- 同じ枠を触るトランザクションをここで待たせる
+select id, capacity from slots where id = $1 for update;
+
+select coalesce(sum(party_size), 0) from bookings
+  where slot_id = $1 and booked_date = $2 and status = 'confirmed';
+
+-- 合計 + 今回の人数 <= capacity なら insert、超えるなら rollback
 commit;
 ```
 
-失敗時は「その枠が埋まりました」と返し、AWAIT_SLOT から再提示する。
+同じ枠の同時予約だけが直列化され、別の枠は並行して進む。
+
+失敗時は「その枠が埋まりました」と返し、選択肢を出し直す（同じ reply に載せる）。
 
 ### 時刻
 - DBは timestamptz（UTC）で保持。判定・表示時に `TIMEZONE` へ変換
